@@ -8,6 +8,7 @@ plugins {
 
 repositories {
   mavenCentral()
+  mavenLocal()
 }
 
 val vertxVersion = "3.9.1"
@@ -19,7 +20,7 @@ dependencies {
   implementation("io.vertx:vertx-web:$vertxVersion")
   implementation("io.vertx:vertx-web-client:$vertxVersion")
   
-  implementation("fr.inria.corese:corese-core:4.1.1")
+  implementation("fr.inria.corese:corese-core:4.1.2")
 
   testImplementation("io.vertx:vertx-junit5:$vertxVersion")
   testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
