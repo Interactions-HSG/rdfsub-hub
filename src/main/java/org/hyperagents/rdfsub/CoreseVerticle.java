@@ -30,7 +30,7 @@ import io.vertx.ext.web.codec.BodyCodec;
 public class CoreseVerticle extends AbstractVerticle {
   private static final String NAMESPACE = "http://w3id.org/rdfsub/subscribers/";
   private static final Logger LOGGER = LoggerFactory.getLogger(CoreseVerticle.class.getName());
-
+  
   private Graph graph;
   private Load loader;
   
@@ -64,15 +64,23 @@ public class CoreseVerticle extends AbstractVerticle {
   }
   
   private void updateTriple(String updateMethod, String triple) {
-    String query = new StringBuilder()
-        .append("@event ")
-        .append(updateMethod)
-        .append(" {")
-        .append(triple)
-        .append("}")
-        .toString();
+    // TODO: load the function from a resource file
+    String processFunction = "@update\n" + 
+        "function us:processRegisteredQueries(q, del, ins) {\n" + 
+        "  for (select ?callback ?query ?trigger where { ?x a us:Subscriber ; us:callback ?callback ; "
+        + "us:query ?query ; us:trigger ?trigger . }) {\n" + 
+        "    xt:print(?trigger);\n" +
+        "    if (funcall (?trigger, q, del, ins)) {\n" + 
+        "      xt:print(\"Triggered, performing query...\");\n" +
+        "      dispatcher:notifySubscriber(?callback, xt:sparql(?query));\n" +
+        "    } else {\n" + 
+        "      xt:print(\"Not triggered\")\n" + 
+        "    }\n" + 
+        "  }\n" + 
+        "}";
     
-    // TODO: add event-driven functions to query
+    String query = "prefix dispatcher: <function://org.hyperagents.rdfsub.NotificationDispatcher>" 
+        + "@event\n" + updateMethod + " {" + triple + "}\n\n" + processFunction;
     
     QueryProcess exec = QueryProcess.create(graph);
     

@@ -62,11 +62,7 @@ public class SubHttpAPIVerticle extends AbstractVerticle {
         String predicate = params.get("predicate");
         String object = params.get("object");
 
-        String triple = new StringBuilder()
-            .append("<").append(subject)
-            .append("> <").append(predicate)
-            .append("> <").append(object)
-            .append("> .").toString();
+        String triple = "<" + subject + "> <" + predicate + "> <" + object + "> .";
         LOGGER.info("Data update: " + action + " " + triple);
         
         DeliveryOptions options = new DeliveryOptions().addHeader("method", action);
