@@ -9,16 +9,17 @@ import io.vertx.ext.web.Router;
 import io.vertx.ext.web.handler.BodyHandler;
 
 /**
- * HTTP interface for handling subscriptions.
+ * Deploys an HTTP interface for the RDFSub Hub. Subscribers can use this interface to register
+ * SPARQL queries and publishers can use this interface to update topic graphs. 
  * 
  * @author Andrei Ciortea, Interactions HSG, University of St. Gallen
  *
  */
-public class SubHttpAPIVerticle extends AbstractVerticle {
+public class HttpAPIVerticle extends AbstractVerticle {
   public static final String DEFAULT_HOST = "0.0.0.0";
   public static final int DEFAULT_PORT = 8080;
   
-  private static final Logger LOGGER = LoggerFactory.getLogger(SubHttpAPIVerticle.class.getName());
+  private static final Logger LOGGER = LoggerFactory.getLogger(HttpAPIVerticle.class.getName());
   
   @Override
   public void start() {
@@ -53,20 +54,21 @@ public class SubHttpAPIVerticle extends AbstractVerticle {
     router.get("/publish").handler((routingContext) -> {
       MultiMap params = routingContext.queryParams();
       
-      if (params.size() == 4 && params.contains("action") && params.contains("subject") 
-          && params.contains("predicate") && params.contains("object")) {
+      if (params.size() == 5 && params.contains("action") && params.contains("topic") 
+          && params.contains("subject") && params.contains("predicate") && params.contains("object")) {
         
         // TODO: validate params
         String action = params.get("action");
+        String topic = params.get("topic");
         String subject = params.get("subject");
         String predicate = params.get("predicate");
         String object = params.get("object");
-
-        String triple = "<" + subject + "> <" + predicate + "> <" + object + "> .";
-        LOGGER.info("Data update: " + action + " " + triple);
+        
+        String quad = "graph <" + topic + "> { <" + subject + "> <" + predicate + "> <" + object + "> . }";
+        LOGGER.info("Data update: " + action + " " + quad);
         
         DeliveryOptions options = new DeliveryOptions().addHeader("method", action);
-        vertx.eventBus().send("corese", triple, options);
+        vertx.eventBus().send("corese", quad, options);
         
         routingContext.response().setStatusCode(200).end();
       } else {

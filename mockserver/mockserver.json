@@ -14,6 +14,15 @@
 	},
 	{
 		"httpRequest": {
+			"method": "GET",
+			"path": "/callback",
+		},
+		"httpResponse": {
+			"statusCode": 204
+		}
+	},
+	{
+		"httpRequest": {
 			"method": "POST",
 			"path": "/callback",
 		},

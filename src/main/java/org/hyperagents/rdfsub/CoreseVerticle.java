@@ -22,22 +22,23 @@ import io.vertx.ext.web.client.WebClient;
 import io.vertx.ext.web.codec.BodyCodec;
 
 /**
- * This verticle manages the hub's data using Corese.
+ * Manages the hub's data using Corese. Each publisher can publish data under a topic IRI (and all
+ * triples are stored in a graph whose name is the topic IRI). Information on subscribers is 
+ * maintained in a separate named graph.
  * 
  * @author Andrei Ciortea, Interactions HSG, University of St. Gallen
  *
  */
 public class CoreseVerticle extends AbstractVerticle {
-  private static final String NAMESPACE = "http://w3id.org/rdfsub/subscribers/";
+  private static final String SUBSCRIBER_GRAPH_IRI = "http://w3id.org/rdfsub/subscribers/";
+  
   private static final Logger LOGGER = LoggerFactory.getLogger(CoreseVerticle.class.getName());
   
   private Graph graph;
-  private Load loader;
   
   @Override
   public void start() {
     graph = Graph.create();
-    loader = Load.create(graph);
     
     vertx.eventBus().consumer("corese", this::handleRequest);
   }
@@ -63,12 +64,12 @@ public class CoreseVerticle extends AbstractVerticle {
 
   }
   
-  private void updateTriple(String updateMethod, String triple) {
+  private void updateTriple(String updateMethod, String quad) {
     // TODO: load the function from a resource file
     String processFunction = "@update\n" + 
         "function us:processRegisteredQueries(q, del, ins) {\n" + 
-        "  for (select ?callback ?query ?trigger where { ?x a us:Subscriber ; us:callback ?callback ; "
-        + "us:query ?query ; us:trigger ?trigger . }) {\n" + 
+        "  for (select ?callback ?query ?trigger from <" + SUBSCRIBER_GRAPH_IRI + "> "
+            + "where { ?x a us:Subscriber ; us:callback ?callback ; us:query ?query ; us:trigger ?trigger . }) {\n" + 
         "    xt:print(?trigger);\n" +
         "    if (funcall (?trigger, q, del, ins)) {\n" + 
         "      xt:print(\"Triggered, performing query...\");\n" +
@@ -80,28 +81,41 @@ public class CoreseVerticle extends AbstractVerticle {
         "}";
     
     String query = "prefix dispatcher: <function://org.hyperagents.rdfsub.NotificationDispatcher>" 
-        + "@event\n" + updateMethod + " {" + triple + "}\n\n" + processFunction;
-    
-    QueryProcess exec = QueryProcess.create(graph);
+        + "@event\n" + updateMethod + " {" + quad + "}\n\n" + processFunction;
     
     try {
-      exec.sparqlUpdate(query);
+      QueryProcess.create(graph).sparqlUpdate(query);
     } catch (EngineException e) {
       LOGGER.debug(e.getMessage());
     }
   }
   
   private void processSubscription(String subscription) {
-    // TODO: Check the subscriber intent by validating the callback IRI.
-    Future<Void> validCallbackFuture = Future.future(promise -> promise.complete());
+    // TODO: check that the SPARQL query is authorized to access the specified datasets
     
+    Optional<String> callbackIri = getObjectAsString(subscription, Loader.TURTLE_FORMAT, "us:callback");
     Optional<String> triggerIri = getObjectAsString(subscription, Loader.TURTLE_FORMAT, "us:trigger");
-    LOGGER.info("Retrieving the trigger function: " + triggerIri);
     
-    if (!triggerIri.isPresent()) {
+    if (!callbackIri.isPresent() || !triggerIri.isPresent()) {
       return;
     }
     
+    Future<Void> validCallbackFuture = Future.future(promise -> {
+      WebClient webClient = WebClient.create(vertx);
+      webClient.getAbs(callbackIri.get()).send(ar -> {
+        if (ar.succeeded()) {
+          if (ar.result().statusCode() == 204) {
+            promise.complete();
+          } else {
+            promise.fail("Invalid status code: " + ar.result().statusCode());
+          }
+        } else {
+          promise.fail("Callback IRI is unreachable.");
+        }
+      });
+    });
+    
+    LOGGER.info("Retrieving the trigger function: " + triggerIri);
     // Retrieve async the linked function used for the trigger and check the syntax.
     Future<Void> validTriggerFuture = Future.future(promise -> {
       WebClient webClient = WebClient.create(vertx);
@@ -151,10 +165,13 @@ public class CoreseVerticle extends AbstractVerticle {
           String subscriptionIRI = generateSubscriptionIRI();
           String registration = subscription.replaceAll("<>", "<" + subscriptionIRI + ">");
           
-          loader.loadString(registration, Loader.TURTLE_FORMAT);
+          String query = "insert data "
+              + "{graph <" + SUBSCRIBER_GRAPH_IRI + "> { " + registration + "}}";
+          
+          QueryProcess.create(graph).sparqlUpdate(query);
           LOGGER.info("Subscription saved successfully: " + subscriptionIRI);
-        } catch (LoadException e) {
-          e.printStackTrace();
+        } catch (EngineException e) {
+          LOGGER.debug(e.getMessage());
         }
       }
     });
@@ -184,7 +201,7 @@ public class CoreseVerticle extends AbstractVerticle {
     String candidateIRI;
     
     do {
-      candidateIRI = NAMESPACE.concat(UUID.randomUUID().toString());
+      candidateIRI = SUBSCRIBER_GRAPH_IRI.concat(UUID.randomUUID().toString());
     } while (subscriptionIriExists(candidateIRI));
     
     return candidateIRI;

@@ -1,6 +1,6 @@
 package org.hyperagents.rdfsub;
 
-import org.hyperagents.rdfsub.api.SubHttpAPIVerticle;
+import org.hyperagents.rdfsub.api.HttpAPIVerticle;
 
 import io.vertx.core.AbstractVerticle;
 
@@ -14,7 +14,7 @@ public class MainVerticle extends AbstractVerticle {
 
   @Override
   public void start() {
-    vertx.deployVerticle(new SubHttpAPIVerticle());
+    vertx.deployVerticle(new HttpAPIVerticle());
     vertx.deployVerticle(new CoreseVerticle());
   }
 
