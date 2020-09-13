@@ -10,7 +10,15 @@ A sketch of the RDFSub protocol is available in [RDFSub.md](RDFSub.md).
 
 ## Running the project
 
-To run the project:
+This project uses a version of Corese that is newer than the one published on Maven central. To use the correct version:
+
+1. Get the latest version of Corese from Github: `git clone https://github.com/Wimmics/corese.git`
+
+2. Edit [line 112](https://github.com/Wimmics/corese/blob/925823709b5fe6cb8960ec626397ad2259339357/pom.xml#L112) in `corese/pom.xml` to bump the version from 4.1.1 to 4.1.2.
+
+3. Install this latest version in the local Maven repository: `mvn -Dmaven.test.skip=true install`
+
+This project's build file is configured to work with Corese 4.1.2. After completing the above configuration, you can run the project with:
 
     ./gradlew test run
 
@@ -24,7 +32,7 @@ This will generate a _fat-jar_ in the `build/libs` directory.
 
 ## Quick demo 
 
-Setup:
+Setup: 
 
 This demo requires to mock the HTTP requests for retrieving a subscriber's triggering function and for pushing notifications. One simple solution is to use [MockServer](https://www.mock-server.com/).
 
