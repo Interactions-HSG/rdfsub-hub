@@ -1,6 +1,7 @@
 package org.hyperagents.rdfsub.api;
 
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.MultiMap;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -47,6 +48,34 @@ public class SubHttpAPIVerticle extends AbstractVerticle {
       vertx.eventBus().send("corese", payload, options);
       
       routingContext.response().setStatusCode(202).end();
+    });
+    
+    router.get("/publish").handler((routingContext) -> {
+      MultiMap params = routingContext.queryParams();
+      
+      if (params.size() == 4 && params.contains("action") && params.contains("subject") 
+          && params.contains("predicate") && params.contains("object")) {
+        
+        // TODO: validate params
+        String action = params.get("action");
+        String subject = params.get("subject");
+        String predicate = params.get("predicate");
+        String object = params.get("object");
+
+        String triple = new StringBuilder()
+            .append("<").append(subject)
+            .append("> <").append(predicate)
+            .append("> <").append(object)
+            .append("> .").toString();
+        LOGGER.info("Data update: " + action + " " + triple);
+        
+        DeliveryOptions options = new DeliveryOptions().addHeader("method", action);
+        vertx.eventBus().send("corese", triple, options);
+        
+        routingContext.response().setStatusCode(200).end();
+      } else {
+        routingContext.response().setStatusCode(400).end();
+      }
     });
     
     return router;

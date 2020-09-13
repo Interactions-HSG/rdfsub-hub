@@ -49,10 +49,38 @@ public class CoreseVerticle extends AbstractVerticle {
       case "subscribe":
         processSubscription(message.body());
         break;
+      case "insert":
+        updateTriple("insert data", message.body());
+        LOGGER.info("Triple inserted: " + message.body());
+        break;
+      case "delete":
+        updateTriple("delete data", message.body());
+        LOGGER.info("Triple deleted: " + message.body());
+        break;
       default:
         break;
     }
 
+  }
+  
+  private void updateTriple(String updateMethod, String triple) {
+    String query = new StringBuilder()
+        .append("@event ")
+        .append(updateMethod)
+        .append(" {")
+        .append(triple)
+        .append("}")
+        .toString();
+    
+    // TODO: add event-driven functions to query
+    
+    QueryProcess exec = QueryProcess.create(graph);
+    
+    try {
+      exec.sparqlUpdate(query);
+    } catch (EngineException e) {
+      LOGGER.debug(e.getMessage());
+    }
   }
   
   private void processSubscription(String subscription) {
