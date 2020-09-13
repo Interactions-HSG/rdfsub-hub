@@ -9,7 +9,7 @@
 			"headers": {
 				"Content-Type": [ "application/sparql-query" ]
 			},
-			"body": "@public\nfunction <http://localhost:1080/trigger>(q, del, ins) { true }"
+			"body": "@public\nfunction <http://localhost:1080/trigger>(del, ins) { true }"
 		}
 	},
 	{

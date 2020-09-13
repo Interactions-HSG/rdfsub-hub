@@ -17,7 +17,7 @@ import io.vertx.ext.web.handler.BodyHandler;
  */
 public class HttpAPIVerticle extends AbstractVerticle {
   public static final String DEFAULT_HOST = "0.0.0.0";
-  public static final int DEFAULT_PORT = 8080;
+  public static final int DEFAULT_PORT = 8090;
   
   private static final Logger LOGGER = LoggerFactory.getLogger(HttpAPIVerticle.class.getName());
   

@@ -71,7 +71,7 @@ public class CoreseVerticle extends AbstractVerticle {
         "  for (select ?callback ?query ?trigger from <" + SUBSCRIBER_GRAPH_IRI + "> "
             + "where { ?x a us:Subscriber ; us:callback ?callback ; us:query ?query ; us:trigger ?trigger . }) {\n" + 
         "    xt:print(?trigger);\n" +
-        "    if (funcall (?trigger, q, del, ins)) {\n" + 
+        "    if (funcall (?trigger, del, ins)) {\n" + 
         "      xt:print(\"Triggered, performing query...\");\n" +
         "      dispatcher:notifySubscriber(?callback, xt:sparql(?query));\n" +
         "    } else {\n" + 
@@ -129,7 +129,7 @@ public class CoreseVerticle extends AbstractVerticle {
                 try {
                   LOGGER.info("Checking the trigger function's syntax:\n" + response.body());
                   
-                  String query = "select (<" + triggerIri.get() + ">(xt:query(), xt:list(), xt:list()) "
+                  String query = "select (<" + triggerIri.get() + ">(xt:list(), xt:list()) "
                       + "as ?value) where {}";
                   
                   Mappings result = QueryProcess.create(graph).query(query + "\n" + response.body());
