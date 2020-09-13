@@ -1,0 +1,15 @@
+[
+	{
+		"httpRequest": {
+			"method": "GET",
+			"path": "/trigger"
+		},
+		"httpResponse": {
+			"statusCode": 200,
+			"headers": {
+				"Content-Type": [ "application/sparql-query" ]
+			},
+			"body": "@public\nfunction <http://localhost:1080/trigger>(?q, ?del, ?ins) {\n  for ((?s ?p ?o) in ?ins) {\n    if (?s = <http://yggdrasil.andreiciortea.ro/environments/env1> && ?p = <https://www.w3.org/2019/wot/td#hasActionAffordance>) {\n      return(true)\n    }\n  };\n  false\n}"
+		}
+	}
+]

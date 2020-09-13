@@ -15,10 +15,13 @@ val junitVersion = "5.3.2"
 
 dependencies {
   implementation("io.vertx:vertx-core:$vertxVersion")
+  implementation("io.vertx:vertx-config:$vertxVersion")
+  implementation("io.vertx:vertx-web:$vertxVersion")
+  implementation("io.vertx:vertx-web-client:$vertxVersion")
+  
   implementation("fr.inria.corese:corese-core:4.1.1")
 
   testImplementation("io.vertx:vertx-junit5:$vertxVersion")
-  testImplementation("io.vertx:vertx-web-client:$vertxVersion")
   testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
   testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
 }
@@ -31,7 +34,7 @@ application {
   mainClassName = "io.vertx.core.Launcher"
 }
 
-val mainVerticleName = "io.vertx.starter.MainVerticle"
+val mainVerticleName = "org.hyperagents.rdfsub.MainVerticle"
 val watchForChange = "src/**/*.java"
 val doOnChange = "${projectDir}/gradlew classes"
 

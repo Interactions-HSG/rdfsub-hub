@@ -1,1 +1,1 @@
-rootProject.name = "vertx-gradle-starter"
+rootProject.name = "rdfsub-hub"
