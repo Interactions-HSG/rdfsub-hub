@@ -1,11 +1,13 @@
 package org.hyperagents.rdfsub;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import fr.inria.corese.core.Graph;
 import fr.inria.corese.core.api.Loader;
 import fr.inria.corese.core.load.Load;
 import fr.inria.corese.core.load.LoadException;
+import fr.inria.corese.core.print.ResultFormat;
 import fr.inria.corese.core.query.QueryProcess;
 import fr.inria.corese.kgram.core.Mappings;
 import fr.inria.corese.sparql.exceptions.EngineException;
@@ -26,10 +28,11 @@ import io.vertx.ext.web.codec.BodyCodec;
  *
  */
 public class CoreseVerticle extends AbstractVerticle {
+  private static final String NAMESPACE = "http://w3id.org/rdfsub/subscribers/";
+  private static final Logger LOGGER = LoggerFactory.getLogger(CoreseVerticle.class.getName());
+
   private Graph graph;
   private Load loader;
-  
-  private static final Logger LOGGER = LoggerFactory.getLogger(CoreseVerticle.class.getName());
   
   @Override
   public void start() {
@@ -44,7 +47,7 @@ public class CoreseVerticle extends AbstractVerticle {
     
     switch (method) {
       case "subscribe":
-        validateSubscription(message.body());
+        processSubscription(message.body());
         break;
       default:
         break;
@@ -52,7 +55,7 @@ public class CoreseVerticle extends AbstractVerticle {
 
   }
   
-  private void validateSubscription(String subscription) {
+  private void processSubscription(String subscription) {
     // TODO: Check the subscriber intent by validating the callback IRI.
     Future<Void> validCallbackFuture = Future.future(promise -> promise.complete());
     
@@ -81,6 +84,7 @@ public class CoreseVerticle extends AbstractVerticle {
                   
                   Mappings result = QueryProcess.create(graph).query(query + "\n" + response.body());
                   
+                  //if (result.isError()) { // TODO: this will not work
                   if (result.getValue("?value") == null) {
                     LOGGER.info("The syntax of the trigger function is invalid.");
                     promise.fail("The syntax of the trigger function is invalid.");
@@ -108,8 +112,11 @@ public class CoreseVerticle extends AbstractVerticle {
     CompositeFuture.all(validCallbackFuture, validTriggerFuture).onComplete(ar -> {
       if (ar.succeeded()) {
         try {
-          loader.loadString(subscription, Loader.TURTLE_FORMAT);
-          LOGGER.info("Subscription saved successfully.");
+          String subscriptionIRI = generateSubscriptionIRI();
+          String registration = subscription.replaceAll("<>", "<" + subscriptionIRI + ">");
+          
+          loader.loadString(registration, Loader.TURTLE_FORMAT);
+          LOGGER.info("Subscription saved successfully: " + subscriptionIRI);
         } catch (LoadException e) {
           e.printStackTrace();
         }
@@ -135,6 +142,31 @@ public class CoreseVerticle extends AbstractVerticle {
     }
     
     return Optional.empty();
+  }
+  
+  private String generateSubscriptionIRI() {
+    String candidateIRI;
+    
+    do {
+      candidateIRI = NAMESPACE.concat(UUID.randomUUID().toString());
+    } while (subscriptionIriExists(candidateIRI));
+    
+    return candidateIRI;
+  }
+  
+  private boolean subscriptionIriExists(String candidateIRI) {
+    String query = "ask { <" + candidateIRI + "> a us:Subscriber }";
+    
+    try {
+      Mappings result = QueryProcess.create(graph).query(query);
+      
+      // TODO: is there a more elegant way to check the result of an ASK?
+      return ResultFormat.format(result).toString().contains("true") ? true : false;
+    } catch (EngineException e) {
+      LOGGER.info(e.getMessage());
+    }
+    
+    return true;
   }
   
 }
