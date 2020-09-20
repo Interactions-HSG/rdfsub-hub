@@ -1,15 +1,18 @@
 package org.hyperagents.rdfsub;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
+import fr.inria.corese.compiler.eval.Interpreter;
 import fr.inria.corese.core.Graph;
 import fr.inria.corese.core.api.Loader;
 import fr.inria.corese.core.load.Load;
 import fr.inria.corese.core.load.LoadException;
-import fr.inria.corese.core.print.ResultFormat;
 import fr.inria.corese.core.query.QueryProcess;
 import fr.inria.corese.kgram.core.Mappings;
+import fr.inria.corese.sparql.api.IDatatype;
+import fr.inria.corese.sparql.datatype.DatatypeMap;
 import fr.inria.corese.sparql.exceptions.EngineException;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.CompositeFuture;
@@ -26,19 +29,33 @@ import io.vertx.ext.web.codec.BodyCodec;
  * triples are stored in a graph whose name is the topic IRI). Information on subscribers is 
  * maintained in a separate named graph.
  * 
- * @author Andrei Ciortea, Interactions HSG, University of St. Gallen
+ * @author Andrei Ciortea, Interactions HSG
  *
  */
 public class CoreseVerticle extends AbstractVerticle {
-  private static final String SUBSCRIBER_GRAPH_IRI = "http://w3id.org/rdfsub/subscribers/";
-  
   private static final Logger LOGGER = LoggerFactory.getLogger(CoreseVerticle.class.getName());
   
+  private static final String DISPATCHER_PREFIX_DEFINITION = "prefix dispatcher: "
+      + "<function://org.hyperagents.rdfsub.NotificationDispatcher>\n";
+  
   private Graph graph;
+  private String subscriberGraphURI;
+  private CapabilityURIGenerator generator;
   
   @Override
-  public void start() {
+  public void start() throws LoadException {
     graph = Graph.create();
+    generator = new CapabilityURIGenerator(config());
+    
+    String updateFunPath = config().getString("process-queries-function", 
+        "src/resources/processRegisteredQueries.rq");
+    String updateFunction = vertx.fileSystem().readFileBlocking(updateFunPath).toString();
+    
+    // The provided template does not contain the name of the graph of subscribers
+    subscriberGraphURI = generator.generateCapabilityURI("/subscribers/");
+    updateFunction = updateFunction.replaceFirst("##SUBSCRIBERS_GRAPH_IRI##", subscriberGraphURI);
+    
+    Load.create(graph).loadString(DISPATCHER_PREFIX_DEFINITION + updateFunction, Load.QUERY_FORMAT);
     
     vertx.eventBus().consumer("corese", this::handleRequest);
   }
@@ -65,23 +82,7 @@ public class CoreseVerticle extends AbstractVerticle {
   }
   
   private void updateTriple(String updateMethod, String quad) {
-    // TODO: load the function from a resource file
-    String processFunction = "@update\n" + 
-        "function us:processRegisteredQueries(q, del, ins) {\n" + 
-        "  for (select ?callback ?query ?trigger from <" + SUBSCRIBER_GRAPH_IRI + "> "
-            + "where { ?x a us:Subscriber ; us:callback ?callback ; us:query ?query ; us:trigger ?trigger . }) {\n" + 
-        "    xt:print(?trigger);\n" +
-        "    if (funcall (?trigger, del, ins)) {\n" + 
-        "      xt:print(\"Triggered, performing query...\");\n" +
-        "      dispatcher:notifySubscriber(?callback, xt:sparql(?query));\n" +
-        "    } else {\n" + 
-        "      xt:print(\"Not triggered\")\n" + 
-        "    }\n" + 
-        "  }\n" + 
-        "}";
-    
-    String query = "prefix dispatcher: <function://org.hyperagents.rdfsub.NotificationDispatcher>" 
-        + "@event\n" + updateMethod + " {" + quad + "}\n\n" + processFunction;
+    String query = "@event\n" + updateMethod + " {" + quad + "}";
     
     try {
       QueryProcess.create(graph).sparqlUpdate(query);
@@ -92,7 +93,6 @@ public class CoreseVerticle extends AbstractVerticle {
   
   private void processSubscription(String subscription) {
     // TODO: check that the SPARQL query is authorized to access the specified datasets
-    
     Optional<String> callbackIri = getObjectAsString(subscription, Loader.TURTLE_FORMAT, "us:callback");
     Optional<String> triggerIri = getObjectAsString(subscription, Loader.TURTLE_FORMAT, "us:trigger");
     
@@ -128,25 +128,53 @@ public class CoreseVerticle extends AbstractVerticle {
               if (response.getHeader("Content-Type").equals("application/sparql-query")) {
                 try {
                   LOGGER.info("Checking the trigger function's syntax:\n" + response.body());
+                  // TODO: use the xt:parse(funcUri) or check the xt:parse implementation Extension 
+                  // in corese.core.extension <= Not able to use the Extension singleton
+                  if (Interpreter.getExtension().get(triggerIri.get()) != null) {
+                    Interpreter.getExtension().removeNamespace(triggerIri.get());
+                  }
                   
-                  String query = "select (<" + triggerIri.get() + ">(xt:list(), xt:list()) "
-                      + "as ?value) where {}";
+                  Graph g = Graph.create();
+                  // TODO: can I obtain a Function object instead and use that?
+                  Load.create(g).loadString(response.body(), Load.QUERY_FORMAT);
                   
-                  Mappings result = QueryProcess.create(graph).query(query + "\n" + response.body());
+                  IDatatype result = QueryProcess.create(g).funcall(triggerIri.get(), 
+                      DatatypeMap.createList(), DatatypeMap.createList());
                   
-                  //if (result.isError()) { // TODO: this will not work
-                  if (result.getValue("?value") == null) {
+                  if (result == null) {
                     LOGGER.info("The syntax of the trigger function is invalid.");
                     promise.fail("The syntax of the trigger function is invalid.");
+                  } else if (!result.isBoolean()) {
+                    LOGGER.info("The trigger function does not return a boolean.");
+                    promise.fail("The trigger function does not return a boolean.");
                   } else {
                     promise.complete();
                   }
-                } catch (EngineException e) {
+                  
+//                  String query = "select (<" + triggerIri.get() + ">(xt:list(), xt:list()) "
+//                      + "as ?value) where {}";
+//                  
+//                  Mappings result = QueryProcess.create().query(query + "\n" + response.body());
+//                  
+//                  //if (result.isError()) { // TODO: this will not work; send a concrete example
+//                  DatatypeValue value = result.getValue("?value");
+//                  
+//                  if (value == null) {
+//                    LOGGER.info("The syntax of the trigger function is invalid.");
+//                    promise.fail("The syntax of the trigger function is invalid.");
+//                  } else if (!value.isBoolean()) {
+//                    LOGGER.info("The trigger function does not return a boolean.");
+//                    promise.fail("The trigger function does not return a boolean.");
+//                  } else {
+//                    promise.complete();
+//                  }
+                } catch (LoadException | EngineException e) {
+//                } catch (EngineException e) {
                   LOGGER.info(e.getMessage());
                   promise.fail(e);
                 }
               } else {
-                promise.fail("Unsopported media type: " + response.getHeader("Content-Type"));
+                promise.fail("Unsupported media type: " + response.getHeader("Content-Type"));
               }
             } else {
               promise.fail("Dereferencing the trigger function failed with status code: " 
@@ -162,11 +190,14 @@ public class CoreseVerticle extends AbstractVerticle {
     CompositeFuture.all(validCallbackFuture, validTriggerFuture).onComplete(ar -> {
       if (ar.succeeded()) {
         try {
-          String subscriptionIRI = generateSubscriptionIRI();
+          List<String> subscriptions = getAllSubscriptions();
+          String subscriptionIRI = generator.generateUniqueCapabilityURI("/subscriptions/", subscriptions);
+          
+          // The subscription to be created is identified by a null relative URI
           String registration = subscription.replaceAll("<>", "<" + subscriptionIRI + ">");
           
           String query = "insert data "
-              + "{graph <" + SUBSCRIBER_GRAPH_IRI + "> { " + registration + "}}";
+              + "{graph <" + subscriberGraphURI + "> { " + registration + "}}";
           
           QueryProcess.create(graph).sparqlUpdate(query);
           LOGGER.info("Subscription saved successfully: " + subscriptionIRI);
@@ -175,6 +206,30 @@ public class CoreseVerticle extends AbstractVerticle {
         }
       }
     });
+  }
+  
+  /**
+   * Retrieves the URIs of all existing subscriptions.
+   * 
+   * @return the list of URIs as string values
+   */
+  private List<String> getAllSubscriptions() {
+    List<String> subscriptions = new ArrayList<String>();
+    
+    String subQuery = "select ?subscription from <" + subscriberGraphURI 
+        + "> where { ?subscription a us:Subscription }";
+    
+    try {
+      Mappings result = QueryProcess.create(graph).query(subQuery);
+      
+      result.forEach(mapping -> {
+        subscriptions.add(mapping.getValue("?subscription").stringValue());
+      });
+    } catch (EngineException e) {
+      LOGGER.debug(e.getMessage());
+    }
+    
+    return subscriptions;
   }
   
   private Optional<String> getObjectAsString(String representation, int format, String prop) {
@@ -195,31 +250,6 @@ public class CoreseVerticle extends AbstractVerticle {
     }
     
     return Optional.empty();
-  }
-  
-  private String generateSubscriptionIRI() {
-    String candidateIRI;
-    
-    do {
-      candidateIRI = SUBSCRIBER_GRAPH_IRI.concat(UUID.randomUUID().toString());
-    } while (subscriptionIriExists(candidateIRI));
-    
-    return candidateIRI;
-  }
-  
-  private boolean subscriptionIriExists(String candidateIRI) {
-    String query = "ask { <" + candidateIRI + "> a us:Subscriber }";
-    
-    try {
-      Mappings result = QueryProcess.create(graph).query(query);
-      
-      // TODO: is there a more elegant way to check the result of an ASK?
-      return ResultFormat.format(result).toString().contains("true") ? true : false;
-    } catch (EngineException e) {
-      LOGGER.info(e.getMessage());
-    }
-    
-    return true;
   }
   
 }

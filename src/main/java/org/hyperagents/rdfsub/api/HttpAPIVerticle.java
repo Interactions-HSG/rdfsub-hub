@@ -3,6 +3,7 @@ package org.hyperagents.rdfsub.api;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.MultiMap;
 import io.vertx.core.eventbus.DeliveryOptions;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.ext.web.Router;
@@ -12,7 +13,7 @@ import io.vertx.ext.web.handler.BodyHandler;
  * Deploys an HTTP interface for the RDFSub Hub. Subscribers can use this interface to register
  * SPARQL queries and publishers can use this interface to update topic graphs. 
  * 
- * @author Andrei Ciortea, Interactions HSG, University of St. Gallen
+ * @author Andrei Ciortea, Interactions HSG
  *
  */
 public class HttpAPIVerticle extends AbstractVerticle {
@@ -23,9 +24,19 @@ public class HttpAPIVerticle extends AbstractVerticle {
   
   @Override
   public void start() {
+    int port = DEFAULT_PORT;
+    String host = DEFAULT_HOST;
+    
+    JsonObject httpConfig = config().getJsonObject("http");
+    
+    if (httpConfig != null) {
+      host = httpConfig.getString("host", DEFAULT_HOST);
+      port = httpConfig.getInteger("port", DEFAULT_PORT);
+    }
+    
     vertx.createHttpServer()
       .requestHandler(createRouter())
-      .listen(DEFAULT_PORT, DEFAULT_HOST);
+      .listen(port, host);
     
     LOGGER.info("Subscriber HTTP API deployed");
   }

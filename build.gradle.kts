@@ -16,7 +16,6 @@ val junitVersion = "5.3.2"
 
 dependencies {
   implementation("io.vertx:vertx-core:$vertxVersion")
-  implementation("io.vertx:vertx-config:$vertxVersion")
   implementation("io.vertx:vertx-web:$vertxVersion")
   implementation("io.vertx:vertx-web-client:$vertxVersion")
   
@@ -39,13 +38,21 @@ val mainVerticleName = "org.hyperagents.rdfsub.MainVerticle"
 val watchForChange = "src/**/*.java"
 val doOnChange = "${projectDir}/gradlew classes"
 
+val conf: String by project
+
 tasks {
   test {
     useJUnitPlatform()
   }
 
   getByName<JavaExec>("run") {
-    args = listOf("run", mainVerticleName, "--redeploy=${watchForChange}", "--launcher-class=${application.mainClassName}", "--on-redeploy=${doOnChange}")
+    val argList: List<String?> = listOf("run", mainVerticleName, "--redeploy=${watchForChange}", "--launcher-class=${application.mainClassName}", "--on-redeploy=${doOnChange}")
+    
+    if (project.hasProperty("conf")) {
+      args = argList + listOf("-conf=${conf}")
+    } else {
+      args = argList
+    }
   }
 
   withType<ShadowJar> {

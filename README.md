@@ -20,7 +20,7 @@ This project uses a version of Corese that is newer than the one published on Ma
 
 This project's build file is configured to work with Corese 4.1.2. After completing the above configuration, you can run the project with:
 
-    ./gradlew test run
+    ./gradlew test run -Pconf=conf/config.json
 
 The command compiles the project and runs the tests, then it launches the RDFSub Hub. Open your browser to `http://localhost:8090` and you should see a hello-world like message.
 
