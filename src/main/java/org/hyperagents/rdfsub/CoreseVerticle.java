@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import org.hyperagents.rdfsub.ldscript.Sandbox;
+
 import fr.inria.corese.compiler.eval.Interpreter;
 import fr.inria.corese.core.Graph;
 import fr.inria.corese.core.api.Loader;
@@ -36,7 +38,10 @@ public class CoreseVerticle extends AbstractVerticle {
   private static final Logger LOGGER = LoggerFactory.getLogger(CoreseVerticle.class.getName());
   
   private static final String DISPATCHER_PREFIX_DEFINITION = "prefix dispatcher: "
-      + "<function://org.hyperagents.rdfsub.NotificationDispatcher>\n";
+      + "<function://org.hyperagents.rdfsub.ldscript.NotificationDispatcher>\n";
+  
+  private static final String SANDBOX_PREFIX_DEFINITION = "prefix sandbox: "
+      + "<function://org.hyperagents.rdfsub.ldscript.Sandbox>\n";
   
   private Graph graph;
   private String subscriberGraphURI;
@@ -45,6 +50,7 @@ public class CoreseVerticle extends AbstractVerticle {
   @Override
   public void start() throws LoadException {
     graph = Graph.create();
+    Sandbox.getInstance(graph);
     generator = new CapabilityURIGenerator(config());
     
     String updateFunPath = config().getString("process-queries-function", 
@@ -55,7 +61,8 @@ public class CoreseVerticle extends AbstractVerticle {
     subscriberGraphURI = generator.generateCapabilityURI("/subscribers/");
     updateFunction = updateFunction.replaceFirst("##SUBSCRIBERS_GRAPH_IRI##", subscriberGraphURI);
     
-    Load.create(graph).loadString(DISPATCHER_PREFIX_DEFINITION + updateFunction, Load.QUERY_FORMAT);
+    Load.create(graph).loadString(SANDBOX_PREFIX_DEFINITION + DISPATCHER_PREFIX_DEFINITION 
+        + updateFunction, Load.QUERY_FORMAT);
     
     vertx.eventBus().consumer("corese", this::handleRequest);
   }
@@ -84,11 +91,18 @@ public class CoreseVerticle extends AbstractVerticle {
   private void updateTriple(String updateMethod, String quad) {
     String query = "@event\n" + updateMethod + " {" + quad + "}";
     
-    try {
-      QueryProcess.create(graph).sparqlUpdate(query);
-    } catch (EngineException e) {
-      LOGGER.debug(e.getMessage());
-    }
+    vertx.executeBlocking(promise -> {
+      try {
+        QueryProcess.create(graph).sparqlUpdate(query);
+        promise.complete();
+      } catch (EngineException e) {
+        promise.fail(e);
+      }
+    }, res -> {
+      if (res.failed()) {
+        LOGGER.info("Sending notifications failed: " + res.cause());
+      }
+    });
   }
   
   private void processSubscription(String subscription) {
@@ -138,12 +152,18 @@ public class CoreseVerticle extends AbstractVerticle {
                   // TODO: can I obtain a Function object instead and use that?
                   Load.create(g).loadString(response.body(), Load.QUERY_FORMAT);
                   
-                  IDatatype result = QueryProcess.create(g).funcall(triggerIri.get(), 
+                  IDatatype result = new Sandbox(g).invokeTrigger(triggerIri.get(), 
                       DatatypeMap.createList(), DatatypeMap.createList());
+                  
+//                  IDatatype result = QueryProcess.create(g).funcall(triggerIri.get(), 
+//                      DatatypeMap.createList(), DatatypeMap.createList());
                   
                   if (result == null) {
                     LOGGER.info("The syntax of the trigger function is invalid.");
                     promise.fail("The syntax of the trigger function is invalid.");
+                  } else if (result == DatatypeMap.ERROR) {
+                    LOGGER.info("The trigger function did not complete successfully.");
+                    promise.fail("The trigger function did not complete successfully.");
                   } else if (!result.isBoolean()) {
                     LOGGER.info("The trigger function does not return a boolean.");
                     promise.fail("The trigger function does not return a boolean.");
@@ -168,7 +188,7 @@ public class CoreseVerticle extends AbstractVerticle {
 //                  } else {
 //                    promise.complete();
 //                  }
-                } catch (LoadException | EngineException e) {
+                } catch (LoadException e) {
 //                } catch (EngineException e) {
                   LOGGER.info(e.getMessage());
                   promise.fail(e);
