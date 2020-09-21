@@ -39,7 +39,7 @@ public class CoreseVerticle extends AbstractVerticle {
       + "<function://org.hyperagents.rdfsub.NotificationDispatcher>\n";
   
   private Graph graph;
-  private String subscriberGraphURI;
+  private String registryGraphURI;
   private CapabilityURIGenerator generator;
   
   @Override
@@ -52,8 +52,8 @@ public class CoreseVerticle extends AbstractVerticle {
     String updateFunction = vertx.fileSystem().readFileBlocking(updateFunPath).toString();
     
     // The provided template does not contain the name of the graph of subscribers
-    subscriberGraphURI = generator.generateCapabilityURI("/subscribers/");
-    updateFunction = updateFunction.replaceFirst("##SUBSCRIBERS_GRAPH_IRI##", subscriberGraphURI);
+    registryGraphURI = generator.generateCapabilityURI("/metadata/");
+    updateFunction = updateFunction.replaceFirst("##SUBSCRIBERS_GRAPH_IRI##", registryGraphURI);
     
     Load.create(graph).loadString(DISPATCHER_PREFIX_DEFINITION + updateFunction, Load.QUERY_FORMAT);
     
@@ -66,6 +66,14 @@ public class CoreseVerticle extends AbstractVerticle {
     switch (method) {
       case "subscribe":
         processSubscription(message.body());
+        break;
+      case "create-topic":
+        Optional<String> topicIRI = createResource("us:Topic", "/topics/", message.body());
+        if (topicIRI.isPresent()) {
+          message.reply(topicIRI.get());
+        } else {
+          message.fail(500, "Unable to create topic");
+        }
         break;
       case "insert":
         updateTriple("insert data", message.body());
@@ -189,23 +197,32 @@ public class CoreseVerticle extends AbstractVerticle {
     
     CompositeFuture.all(validCallbackFuture, validTriggerFuture).onComplete(ar -> {
       if (ar.succeeded()) {
-        try {
-          List<String> subscriptions = getAllSubscriptions();
-          String subscriptionIRI = generator.generateUniqueCapabilityURI("/subscriptions/", subscriptions);
-          
-          // The subscription to be created is identified by a null relative URI
-          String registration = subscription.replaceAll("<>", "<" + subscriptionIRI + ">");
-          
-          String query = "insert data "
-              + "{graph <" + subscriberGraphURI + "> { " + registration + "}}";
-          
-          QueryProcess.create(graph).sparqlUpdate(query);
-          LOGGER.info("Subscription saved successfully: " + subscriptionIRI);
-        } catch (EngineException e) {
-          LOGGER.debug(e.getMessage());
-        }
+        createResource("us:Subscription", "/subscriptions/", subscription);
       }
     });
+  }
+  
+  private Optional<String> createResource(String classIRI, String containerPath, String representation) {
+    // TODO: validate payload
+    try {
+      List<String> resources = getAllResources(classIRI);
+      String resourceIRI = generator.generateUniqueCapabilityURI(containerPath, resources);
+      
+      // The subscription to be created is identified by a null relative URI
+      String registration = representation.replaceAll("<>", "<" + resourceIRI + ">");
+      
+      String query = "insert data "
+          + "{graph <" + registryGraphURI + "> { " + registration + "}}";
+      
+      QueryProcess.create(graph).sparqlUpdate(query);
+      LOGGER.info("Resource created successfully: " + resourceIRI);
+      
+      return Optional.of(resourceIRI);
+    } catch (EngineException e) {
+      LOGGER.debug(e.getMessage());
+    }
+    
+    return Optional.empty();
   }
   
   /**
@@ -213,23 +230,23 @@ public class CoreseVerticle extends AbstractVerticle {
    * 
    * @return the list of URIs as string values
    */
-  private List<String> getAllSubscriptions() {
-    List<String> subscriptions = new ArrayList<String>();
+  private List<String> getAllResources(String classURI) {
+    List<String> resources = new ArrayList<String>();
     
-    String subQuery = "select ?subscription from <" + subscriberGraphURI 
-        + "> where { ?subscription a us:Subscription }";
+    String subQuery = "select ?resource from <" + registryGraphURI 
+        + "> where { ?resource a " + classURI + " }";
     
     try {
       Mappings result = QueryProcess.create(graph).query(subQuery);
       
       result.forEach(mapping -> {
-        subscriptions.add(mapping.getValue("?subscription").stringValue());
+        resources.add(mapping.getValue("?resource").stringValue());
       });
     } catch (EngineException e) {
       LOGGER.debug(e.getMessage());
     }
     
-    return subscriptions;
+    return resources;
   }
   
   private Optional<String> getObjectAsString(String representation, int format, String prop) {

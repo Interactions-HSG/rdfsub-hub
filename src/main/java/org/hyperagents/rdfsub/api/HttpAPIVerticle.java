@@ -62,6 +62,22 @@ public class HttpAPIVerticle extends AbstractVerticle {
       routingContext.response().setStatusCode(202).end();
     });
     
+    router.post("/topics").consumes("text/turtle").handler((routingContext) -> {
+      String payload = routingContext.getBodyAsString();
+      // TODO: validate subscribe payload syntax
+      
+      DeliveryOptions options = new DeliveryOptions().addHeader("method", "create-topic");
+      vertx.eventBus().request("corese", payload, options, reply -> {
+        if (reply.succeeded()) {
+          routingContext.response().setStatusCode(200)
+            .putHeader("Link", (String) reply.result().body())
+            .end();
+        } else {
+          routingContext.response().setStatusCode(500).end();
+        }
+      });
+    });
+    
     router.get("/publish").handler((routingContext) -> {
       MultiMap params = routingContext.queryParams();
       
