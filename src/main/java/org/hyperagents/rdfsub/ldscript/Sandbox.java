@@ -8,16 +8,17 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import fr.inria.corese.core.Graph;
+import fr.inria.corese.core.load.Load;
+import fr.inria.corese.core.load.LoadException;
 import fr.inria.corese.core.query.QueryProcess;
 import fr.inria.corese.sparql.api.IDatatype;
-import fr.inria.corese.sparql.datatype.DatatypeMap;
 import fr.inria.corese.sparql.triple.parser.Access;
-import fr.inria.corese.sparql.triple.parser.Context;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 
 /**
- * 
+ * Utility class used to run trigger functions on isolated threads and with limited functional and 
+ * communication capabilities.
  * 
  * @author Andrei Ciortea, Interactions HSG
  *
@@ -80,6 +81,16 @@ public class Sandbox {
     Access.set(Access.Feature.READ_WRITE_JAVA, Access.Level.PRIVATE);
   }
   
+  public void load(String content, int format) throws LoadException {
+    Sandbox.restrictAccess();
+    Load.create(graph).loadString(content, format);
+    Sandbox.relaxAccess();
+    
+//    Context context = new Context();
+//    context.setLevel(Access.Level.SUPER_USER);
+//    QueryProcess.create(graph).query(content, context);
+  }
+  
   public IDatatype invokeTrigger(IDatatype trigger, IDatatype del, IDatatype ins) {
     return invokeTrigger(trigger.getLabel(), del, ins);
   }
@@ -95,11 +106,11 @@ public class Sandbox {
       
       @Override
       public IDatatype call() throws Exception {
-        Context context = new Context();
-        context.setLevel(Access.Level.PUBLIC);
+//        Context context = new Context();
+//        context.setLevel(Access.Level.PUBLIC);
         
-        return QueryProcess.create(graph).funcall(trigger, context, del, ins);
-//        return QueryProcess.create(graph).funcall(trigger, del, ins);
+//        return QueryProcess.create(graph).funcall(trigger, context, del, ins);
+        return QueryProcess.create(graph).funcall(trigger, del, ins);
       }
       
     });
@@ -114,8 +125,6 @@ public class Sandbox {
       }
     } catch (TimeoutException e) {
       LOGGER.info("Execution timed out for trigger: " + trigger);
-      exec.shutdownNow();
-      return DatatypeMap.FALSE;
     } catch (Exception e) {
       LOGGER.info("An exception was raised by invoking the trigger: " + trigger);
     } finally {
@@ -123,7 +132,7 @@ public class Sandbox {
       exec.shutdownNow();
     }
     
-    return DatatypeMap.ERROR;
+    return null;
   }
   
 }

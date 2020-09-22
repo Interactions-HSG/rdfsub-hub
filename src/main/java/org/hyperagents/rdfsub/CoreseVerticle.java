@@ -150,27 +150,15 @@ public class CoreseVerticle extends AbstractVerticle {
                     Interpreter.getExtension().removeNamespace(triggerIri.get());
                   }
                   
-                  Sandbox.restrictAccess();
+                  Sandbox sandbox = new Sandbox(Graph.create());
+                  sandbox.load(response.body(), Load.QUERY_FORMAT);
                   
-                  Graph g = Graph.create();
-//                  Load.create(g).loadString(response.body(), Load.QUERY_FORMAT);
-                  
-//                  Context context = new Context();
-//                  context.setLevel(Access.Level.SUPER_USER);
-//                  QueryProcess.create(g).query(response.body(), context);
-                  QueryProcess.create(g).query(response.body());
-                  
-                  IDatatype result = new Sandbox(g).invokeTrigger(triggerIri.get(),
+                  IDatatype result = sandbox.invokeTrigger(triggerIri.get(),
                       DatatypeMap.createList(), DatatypeMap.createList());
                   
-                  Sandbox.relaxAccess();
-                  
                   if (result == null) {
-                    LOGGER.info("The syntax of the trigger function is invalid.");
-                    promise.fail("The syntax of the trigger function is invalid.");
-                  } else if (result == DatatypeMap.ERROR) {
-                    LOGGER.info("The trigger function did not complete successfully.");
-                    promise.fail("The trigger function did not complete successfully.");
+                    LOGGER.info("The trigger function is invalid.");
+                    promise.fail("The trigger function is invalid.");
                   } else if (!result.isBoolean()) {
                     LOGGER.info("The trigger function does not return a boolean. Returned value was: " 
                         + result);
@@ -179,8 +167,7 @@ public class CoreseVerticle extends AbstractVerticle {
                     promise.complete();
                   }
                   
-//                } catch (LoadException e) {
-                } catch (EngineException e) {
+                } catch (LoadException e) {
                   LOGGER.info(e.getMessage());
                   promise.fail(e);
                 }
