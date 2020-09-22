@@ -15,6 +15,84 @@
 	{
 		"httpRequest": {
 			"method": "GET",
+			"path": "/trigger-rec"
+		},
+		"httpResponse": {
+			"statusCode": 200,
+			"headers": {
+				"Content-Type": [ "application/sparql-query" ]
+			},
+			"body": "@public\nfunction <http://localhost:1080/trigger>(del, ins) { <http://localhost:1080/trigger>(del, ins) }"
+		}
+	},
+	{
+		"httpRequest": {
+			"method": "GET",
+			"path": "/trigger-lf"
+		},
+		"httpResponse": {
+			"statusCode": 200,
+			"headers": {
+				"Content-Type": [ "application/sparql-query" ]
+			},
+			"body": "@public\nfunction <http://localhost:1080/trigger-lf>(del, ins) { <http://ns.inria.fr/sparql-extension/calendar#div>(4, 2) }"
+		}
+	},
+	{
+		"httpRequest": {
+			"method": "GET",
+			"path": "/trigger-lf-local"
+		},
+		"httpResponse": {
+			"statusCode": 200,
+			"headers": {
+				"Content-Type": [ "application/sparql-query" ]
+			},
+			"body": "@public\nfunction <http://localhost:1080/trigger-lf-local>(del, ins) { <http://localhost:1080/print>(); true }"
+		}
+	},
+	{
+		"httpRequest": {
+			"method": "GET",
+			"path": "/trigger-update"
+		},
+		"httpResponse": {
+			"statusCode": 200,
+			"headers": {
+				"Content-Type": [ "application/sparql-query" ]
+			},
+			"body": "@public\nfunction <http://localhost:1080/trigger-update>(del, ins) {\n  xt:print(\"Inserting extra triple!\");\n  query(insert data { graph <http://hyperagents.org/> { us:Andrei a us:Person } });\n xt:print(\"Insert done!\"); true\n}"
+		}
+	},
+	{
+		"httpRequest": {
+			"method": "GET",
+			"path": "/trigger-read"
+		},
+		"httpResponse": {
+			"statusCode": 200,
+			"headers": {
+				"Content-Type": [ "application/sparql-query" ]
+			},
+			"body": "@public\nfunction <http://localhost:1080/trigger-read>(del, ins) {\n  xt:print(\"Executing an HTTP GET request:\");\n  xt:print(xt:read(\"http://localhost:1080/print\"));\n  true\n}"
+		}
+	},
+	{
+		"httpRequest": {
+			"method": "GET",
+			"path": "/print"
+		},
+		"httpResponse": {
+			"statusCode": 200,
+			"headers": {
+				"Content-Type": [ "application/sparql-query" ]
+			},
+			"body": "@public\nfunction <http://localhost:1080/print>() { xt:print(\"Hello from LF!\") }"
+		}
+	},
+	{
+		"httpRequest": {
+			"method": "GET",
 			"path": "/callback",
 		},
 		"httpResponse": {

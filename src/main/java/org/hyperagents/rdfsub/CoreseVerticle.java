@@ -121,7 +121,7 @@ public class CoreseVerticle extends AbstractVerticle {
           if (ar.result().statusCode() == 204) {
             promise.complete();
           } else {
-            promise.fail("Invalid status code: " + ar.result().statusCode());
+            promise.fail("Status code: " + ar.result().statusCode());
           }
         } else {
           promise.fail("Callback IRI is unreachable.");
@@ -140,23 +140,30 @@ public class CoreseVerticle extends AbstractVerticle {
             HttpResponse<String> response = ar.result();
             if (response.statusCode() == 200) {
               if (response.getHeader("Content-Type").equals("application/sparql-query")) {
+                
                 try {
+                  
                   LOGGER.info("Checking the trigger function's syntax:\n" + response.body());
-                  // TODO: use the xt:parse(funcUri) or check the xt:parse implementation Extension 
-                  // in corese.core.extension <= Not able to use the Extension singleton
+                  
+                  // Remove the triggering function if it was already exported
                   if (Interpreter.getExtension().get(triggerIri.get()) != null) {
                     Interpreter.getExtension().removeNamespace(triggerIri.get());
                   }
                   
-                  Graph g = Graph.create();
-                  // TODO: can I obtain a Function object instead and use that?
-                  Load.create(g).loadString(response.body(), Load.QUERY_FORMAT);
+                  Sandbox.restrictAccess();
                   
-                  IDatatype result = new Sandbox(g).invokeTrigger(triggerIri.get(), 
+                  Graph g = Graph.create();
+//                  Load.create(g).loadString(response.body(), Load.QUERY_FORMAT);
+                  
+//                  Context context = new Context();
+//                  context.setLevel(Access.Level.SUPER_USER);
+//                  QueryProcess.create(g).query(response.body(), context);
+                  QueryProcess.create(g).query(response.body());
+                  
+                  IDatatype result = new Sandbox(g).invokeTrigger(triggerIri.get(),
                       DatatypeMap.createList(), DatatypeMap.createList());
                   
-//                  IDatatype result = QueryProcess.create(g).funcall(triggerIri.get(), 
-//                      DatatypeMap.createList(), DatatypeMap.createList());
+                  Sandbox.relaxAccess();
                   
                   if (result == null) {
                     LOGGER.info("The syntax of the trigger function is invalid.");
@@ -165,31 +172,15 @@ public class CoreseVerticle extends AbstractVerticle {
                     LOGGER.info("The trigger function did not complete successfully.");
                     promise.fail("The trigger function did not complete successfully.");
                   } else if (!result.isBoolean()) {
-                    LOGGER.info("The trigger function does not return a boolean.");
+                    LOGGER.info("The trigger function does not return a boolean. Returned value was: " 
+                        + result);
                     promise.fail("The trigger function does not return a boolean.");
                   } else {
                     promise.complete();
                   }
                   
-//                  String query = "select (<" + triggerIri.get() + ">(xt:list(), xt:list()) "
-//                      + "as ?value) where {}";
-//                  
-//                  Mappings result = QueryProcess.create().query(query + "\n" + response.body());
-//                  
-//                  //if (result.isError()) { // TODO: this will not work; send a concrete example
-//                  DatatypeValue value = result.getValue("?value");
-//                  
-//                  if (value == null) {
-//                    LOGGER.info("The syntax of the trigger function is invalid.");
-//                    promise.fail("The syntax of the trigger function is invalid.");
-//                  } else if (!value.isBoolean()) {
-//                    LOGGER.info("The trigger function does not return a boolean.");
-//                    promise.fail("The trigger function does not return a boolean.");
-//                  } else {
-//                    promise.complete();
-//                  }
-                } catch (LoadException e) {
-//                } catch (EngineException e) {
+//                } catch (LoadException e) {
+                } catch (EngineException e) {
                   LOGGER.info(e.getMessage());
                   promise.fail(e);
                 }
@@ -197,6 +188,8 @@ public class CoreseVerticle extends AbstractVerticle {
                 promise.fail("Unsupported media type: " + response.getHeader("Content-Type"));
               }
             } else {
+              LOGGER.info("Retrieving trigger function failed with status code: " 
+                  + response.statusCode());
               promise.fail("Dereferencing the trigger function failed with status code: " 
                   + response.statusCode());
             }

@@ -11,10 +11,13 @@ import fr.inria.corese.core.Graph;
 import fr.inria.corese.core.query.QueryProcess;
 import fr.inria.corese.sparql.api.IDatatype;
 import fr.inria.corese.sparql.datatype.DatatypeMap;
+import fr.inria.corese.sparql.triple.parser.Access;
+import fr.inria.corese.sparql.triple.parser.Context;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 
 /**
+ * 
  * 
  * @author Andrei Ciortea, Interactions HSG
  *
@@ -65,6 +68,18 @@ public class Sandbox {
     return instance; 
   }
   
+  public static void restrictAccess() {
+    Access.set(Access.Feature.LINKED_FUNCTION, Access.Level.SUPER_USER);
+    Access.set(Access.Feature.SPARQL_UPDATE, Access.Level.SUPER_USER);
+    Access.set(Access.Feature.READ_WRITE_JAVA, Access.Level.SUPER_USER);
+  }
+  
+  public static void relaxAccess() {
+    Access.set(Access.Feature.LINKED_FUNCTION, Access.Level.PRIVATE);
+    Access.set(Access.Feature.SPARQL_UPDATE, Access.Level.PRIVATE);
+    Access.set(Access.Feature.READ_WRITE_JAVA, Access.Level.PRIVATE);
+  }
+  
   public IDatatype invokeTrigger(IDatatype trigger, IDatatype del, IDatatype ins) {
     return invokeTrigger(trigger.getLabel(), del, ins);
   }
@@ -72,13 +87,19 @@ public class Sandbox {
   public IDatatype invokeTrigger(String trigger, IDatatype del, IDatatype ins) {
     LOGGER.info("Hello from sandbox! Graph is:\n" + graph);
     
+    restrictAccess();
+    
     ExecutorService exec = Executors.newSingleThreadExecutor();
     
     Future<IDatatype> result = exec.submit(new Callable<IDatatype>() {
       
       @Override
       public IDatatype call() throws Exception {
-        return QueryProcess.create(graph).funcall(trigger, del, ins);
+        Context context = new Context();
+        context.setLevel(Access.Level.PUBLIC);
+        
+        return QueryProcess.create(graph).funcall(trigger, context, del, ins);
+//        return QueryProcess.create(graph).funcall(trigger, del, ins);
       }
       
     });
@@ -86,14 +107,19 @@ public class Sandbox {
     try {
       IDatatype value = result.get(1, TimeUnit.SECONDS);
       
-      if (value.isBoolean()) {
+      LOGGER.info("Returned value: " + value);
+      
+      if (value != null) {
         return value;
       }
     } catch (TimeoutException e) {
       LOGGER.info("Execution timed out for trigger: " + trigger);
+      exec.shutdownNow();
+      return DatatypeMap.FALSE;
     } catch (Exception e) {
-      LOGGER.info("Trigger invocation exception: " + e.getMessage());
+      LOGGER.info("An exception was raised by invoking the trigger: " + trigger);
     } finally {
+      relaxAccess();
       exec.shutdownNow();
     }
     
