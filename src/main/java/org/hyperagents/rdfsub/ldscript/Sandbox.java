@@ -12,13 +12,15 @@ import fr.inria.corese.core.load.Load;
 import fr.inria.corese.core.load.LoadException;
 import fr.inria.corese.core.query.QueryProcess;
 import fr.inria.corese.sparql.api.IDatatype;
+import fr.inria.corese.sparql.exceptions.EngineException;
 import fr.inria.corese.sparql.triple.parser.Access;
+import fr.inria.corese.sparql.triple.parser.Context;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 
 /**
- * Utility class used to run trigger functions on isolated threads and with limited functional and 
- * communication capabilities.
+ * Utility class for sandboxing trigger functions. The functions run on isolated threads with 
+ * limited functional and communication capabilities.
  * 
  * @author Andrei Ciortea, Interactions HSG
  *
@@ -33,7 +35,7 @@ public class Sandbox {
    * Instantiates an empty LDScript Sandbox
    */
   public Sandbox() {
-    this.graph = null;
+    this(null);
   }
   
   /**
@@ -43,6 +45,8 @@ public class Sandbox {
    */
   public Sandbox(Graph graph) {
     this.graph = graph;
+    
+    Access.set(Access.Feature.FUNCTION_DEFINITION, Access.Level.PUBLIC);
   }
   
   /**
@@ -51,7 +55,6 @@ public class Sandbox {
    * @return an instance of the Sandbox if one was created, null otherwise
    */
   public static synchronized Sandbox singleton() {
-    LOGGER.info("Singleton was called by LDScript processor!");
     return instance;
   }
   
@@ -69,56 +72,83 @@ public class Sandbox {
     return instance; 
   }
   
-  public static void restrictAccess() {
-    Access.set(Access.Feature.LINKED_FUNCTION, Access.Level.SUPER_USER);
-    Access.set(Access.Feature.SPARQL_UPDATE, Access.Level.SUPER_USER);
-    Access.set(Access.Feature.READ_WRITE_JAVA, Access.Level.SUPER_USER);
+  /**
+   * Sets the access level for all LDScript features that can be accessed from triggering functions. 
+   * Access levels are defined in Corese.
+   * 
+   * Corese features currently covered: LINKED_FUNCTION, SPARQL, SPARQL_UPDATE, READ_WRITE, 
+   * JAVA_FUNCTION (see fr.inria.corese.sparql.triple.parser.Access.Feature).
+   */
+  public static void setAccessLevel(Access.Level level) {
+    Access.set(Access.Feature.LINKED_FUNCTION, level);
+    Access.set(Access.Feature.SPARQL, level);
+    Access.set(Access.Feature.SPARQL_UPDATE, level);
+    Access.set(Access.Feature.READ_WRITE, level);
+    Access.set(Access.Feature.JAVA_FUNCTION, level);
   }
   
-  public static void relaxAccess() {
-    Access.set(Access.Feature.LINKED_FUNCTION, Access.Level.PRIVATE);
-    Access.set(Access.Feature.SPARQL_UPDATE, Access.Level.PRIVATE);
-    Access.set(Access.Feature.READ_WRITE_JAVA, Access.Level.PRIVATE);
-  }
-  
+  /**
+   * Loads RDF data or LDScript functions into the Corese instance of this sandbox. The content is 
+   * loaded using the sandbox's default access restrictions (ATM specifying the load context is not 
+   * available in Corese).
+   * 
+   * @param content the content to be loaded
+   * @param format a Corese-specific int value that identifies the format (see fr.inria.corese.core.Load)
+   * @throws LoadException
+   */
   public void load(String content, int format) throws LoadException {
-    Sandbox.restrictAccess();
+    setAccessLevel(Access.Level.SUPER_USER);
     Load.create(graph).loadString(content, format);
-    Sandbox.relaxAccess();
-    
-//    Context context = new Context();
-//    context.setLevel(Access.Level.SUPER_USER);
-//    QueryProcess.create(graph).query(content, context);
+    setAccessLevel(Access.Level.PRIVATE);
   }
   
+  /**
+   * Runs a SPARQL query using a public access context (the lowest access level specified in Corese).
+   * The query can include LDScript functions.
+   * 
+   * @param query the query represented as a string
+   * @throws EngineException
+   */
+  public void query(String query) throws EngineException {
+    QueryProcess.create(graph).query(query, createTriggerContext());
+  }
+  
+  /**
+   * Invokes a triggering function and returns the value. The invocation uses a public access context 
+   * (the lowest access level specified in Corese).
+   * 
+   * @param trigger the triggering function
+   * @param del the triples deleted with this data update
+   * @param ins the triples inserted with this data update
+   * @return value returned by the triggering function
+   */
   public IDatatype invokeTrigger(IDatatype trigger, IDatatype del, IDatatype ins) {
     return invokeTrigger(trigger.getLabel(), del, ins);
   }
   
+  /**
+   * Invokes a triggering function and returns the value. The invocation uses a public access context 
+   * (the lowest access level specified in Corese).
+   * 
+   * @param trigger the triggering function
+   * @param del the triples deleted with this data update
+   * @param ins the triples inserted with this data update
+   * @return value returned by the triggering function
+   */
   public IDatatype invokeTrigger(String trigger, IDatatype del, IDatatype ins) {
-    LOGGER.info("Hello from sandbox! Graph is:\n" + graph);
-    
-    restrictAccess();
-    
     ExecutorService exec = Executors.newSingleThreadExecutor();
     
     Future<IDatatype> result = exec.submit(new Callable<IDatatype>() {
       
       @Override
       public IDatatype call() throws Exception {
-//        Context context = new Context();
-//        context.setLevel(Access.Level.PUBLIC);
-        
-//        return QueryProcess.create(graph).funcall(trigger, context, del, ins);
-        return QueryProcess.create(graph).funcall(trigger, del, ins);
+        return QueryProcess.create(graph).funcall(trigger, createTriggerContext(), del, ins);
       }
       
     });
     
     try {
       IDatatype value = result.get(1, TimeUnit.SECONDS);
-      
-      LOGGER.info("Returned value: " + value);
       
       if (value != null) {
         return value;
@@ -128,11 +158,16 @@ public class Sandbox {
     } catch (Exception e) {
       LOGGER.info("An exception was raised by invoking the trigger: " + trigger);
     } finally {
-      relaxAccess();
       exec.shutdownNow();
     }
     
     return null;
+  }
+  
+  private Context createTriggerContext() {
+    Context context = new Context();
+    context.setLevel(Access.Level.PUBLIC);
+    return context;
   }
   
 }

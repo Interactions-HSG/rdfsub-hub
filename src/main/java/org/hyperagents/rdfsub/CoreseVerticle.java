@@ -129,7 +129,7 @@ public class CoreseVerticle extends AbstractVerticle {
       });
     });
     
-    LOGGER.info("Retrieving the trigger function: " + triggerIri);
+    LOGGER.info("New subscription requested with triggering function: " + triggerIri);
     // Retrieve async the linked function used for the trigger and check the syntax.
     Future<Void> validTriggerFuture = Future.future(promise -> {
       WebClient webClient = WebClient.create(vertx);
@@ -151,7 +151,7 @@ public class CoreseVerticle extends AbstractVerticle {
                   }
                   
                   Sandbox sandbox = new Sandbox(Graph.create());
-                  sandbox.load(response.body(), Load.QUERY_FORMAT);
+                  sandbox.query(response.body());
                   
                   IDatatype result = sandbox.invokeTrigger(triggerIri.get(),
                       DatatypeMap.createList(), DatatypeMap.createList());
@@ -167,7 +167,7 @@ public class CoreseVerticle extends AbstractVerticle {
                     promise.complete();
                   }
                   
-                } catch (LoadException e) {
+                } catch (EngineException e) {
                   LOGGER.info(e.getMessage());
                   promise.fail(e);
                 }
