@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import org.hyperagents.rdfsub.ldscript.Sandbox;
+
 import fr.inria.corese.compiler.eval.Interpreter;
 import fr.inria.corese.core.Graph;
 import fr.inria.corese.core.api.Loader;
@@ -36,7 +38,10 @@ public class CoreseVerticle extends AbstractVerticle {
   private static final Logger LOGGER = LoggerFactory.getLogger(CoreseVerticle.class.getName());
   
   private static final String DISPATCHER_PREFIX_DEFINITION = "prefix dispatcher: "
-      + "<function://org.hyperagents.rdfsub.NotificationDispatcher>\n";
+      + "<function://org.hyperagents.rdfsub.ldscript.NotificationDispatcher>\n";
+  
+  private static final String SANDBOX_PREFIX_DEFINITION = "prefix sandbox: "
+      + "<function://org.hyperagents.rdfsub.ldscript.Sandbox>\n";
   
   private Graph graph;
   private String registryGraphURI;
@@ -45,6 +50,7 @@ public class CoreseVerticle extends AbstractVerticle {
   @Override
   public void start() throws LoadException {
     graph = Graph.create();
+    Sandbox.getInstance(graph);
     generator = new CapabilityURIGenerator(config());
     
     String updateFunPath = config().getString("process-queries-function", 
@@ -55,7 +61,8 @@ public class CoreseVerticle extends AbstractVerticle {
     registryGraphURI = generator.generateCapabilityURI("/metadata/");
     updateFunction = updateFunction.replaceFirst("##SUBSCRIBERS_GRAPH_IRI##", registryGraphURI);
     
-    Load.create(graph).loadString(DISPATCHER_PREFIX_DEFINITION + updateFunction, Load.QUERY_FORMAT);
+    Load.create(graph).loadString(SANDBOX_PREFIX_DEFINITION + DISPATCHER_PREFIX_DEFINITION 
+        + updateFunction, Load.QUERY_FORMAT);
     
     vertx.eventBus().consumer("corese", this::handleRequest);
   }
@@ -92,11 +99,18 @@ public class CoreseVerticle extends AbstractVerticle {
   private void updateTriple(String updateMethod, String quad) {
     String query = "@event\n" + updateMethod + " {" + quad + "}";
     
-    try {
-      QueryProcess.create(graph).sparqlUpdate(query);
-    } catch (EngineException e) {
-      LOGGER.debug(e.getMessage());
-    }
+    vertx.executeBlocking(promise -> {
+      try {
+        QueryProcess.create(graph).sparqlUpdate(query);
+        promise.complete();
+      } catch (EngineException e) {
+        promise.fail(e);
+      }
+    }, res -> {
+      if (res.failed()) {
+        LOGGER.info("Sending notifications failed: " + res.cause());
+      }
+    });
   }
   
   private void processSubscription(String subscription) {
@@ -115,7 +129,7 @@ public class CoreseVerticle extends AbstractVerticle {
           if (ar.result().statusCode() == 204) {
             promise.complete();
           } else {
-            promise.fail("Invalid status code: " + ar.result().statusCode());
+            promise.fail("Status code: " + ar.result().statusCode());
           }
         } else {
           promise.fail("Callback IRI is unreachable.");
@@ -123,7 +137,7 @@ public class CoreseVerticle extends AbstractVerticle {
       });
     });
     
-    LOGGER.info("Retrieving the trigger function: " + triggerIri);
+    LOGGER.info("New subscription requested with triggering function: " + triggerIri);
     // Retrieve async the linked function used for the trigger and check the syntax.
     Future<Void> validTriggerFuture = Future.future(promise -> {
       WebClient webClient = WebClient.create(vertx);
@@ -134,50 +148,34 @@ public class CoreseVerticle extends AbstractVerticle {
             HttpResponse<String> response = ar.result();
             if (response.statusCode() == 200) {
               if (response.getHeader("Content-Type").equals("application/sparql-query")) {
+                
                 try {
+                  
                   LOGGER.info("Checking the trigger function's syntax:\n" + response.body());
-                  // TODO: use the xt:parse(funcUri) or check the xt:parse implementation Extension 
-                  // in corese.core.extension <= Not able to use the Extension singleton
+                  
+                  // Remove the triggering function if it was already exported
                   if (Interpreter.getExtension().get(triggerIri.get()) != null) {
                     Interpreter.getExtension().removeNamespace(triggerIri.get());
                   }
                   
-                  Graph g = Graph.create();
-                  // TODO: can I obtain a Function object instead and use that?
-                  Load.create(g).loadString(response.body(), Load.QUERY_FORMAT);
+                  Sandbox sandbox = new Sandbox(Graph.create());
+                  sandbox.query(response.body());
                   
-                  IDatatype result = QueryProcess.create(g).funcall(triggerIri.get(), 
+                  IDatatype result = sandbox.invokeTrigger(triggerIri.get(),
                       DatatypeMap.createList(), DatatypeMap.createList());
                   
                   if (result == null) {
-                    LOGGER.info("The syntax of the trigger function is invalid.");
-                    promise.fail("The syntax of the trigger function is invalid.");
+                    LOGGER.info("The trigger function is invalid.");
+                    promise.fail("The trigger function is invalid.");
                   } else if (!result.isBoolean()) {
-                    LOGGER.info("The trigger function does not return a boolean.");
+                    LOGGER.info("The trigger function does not return a boolean. Returned value was: " 
+                        + result);
                     promise.fail("The trigger function does not return a boolean.");
                   } else {
                     promise.complete();
                   }
                   
-//                  String query = "select (<" + triggerIri.get() + ">(xt:list(), xt:list()) "
-//                      + "as ?value) where {}";
-//                  
-//                  Mappings result = QueryProcess.create().query(query + "\n" + response.body());
-//                  
-//                  //if (result.isError()) { // TODO: this will not work; send a concrete example
-//                  DatatypeValue value = result.getValue("?value");
-//                  
-//                  if (value == null) {
-//                    LOGGER.info("The syntax of the trigger function is invalid.");
-//                    promise.fail("The syntax of the trigger function is invalid.");
-//                  } else if (!value.isBoolean()) {
-//                    LOGGER.info("The trigger function does not return a boolean.");
-//                    promise.fail("The trigger function does not return a boolean.");
-//                  } else {
-//                    promise.complete();
-//                  }
-                } catch (LoadException | EngineException e) {
-//                } catch (EngineException e) {
+                } catch (EngineException e) {
                   LOGGER.info(e.getMessage());
                   promise.fail(e);
                 }
@@ -185,6 +183,8 @@ public class CoreseVerticle extends AbstractVerticle {
                 promise.fail("Unsupported media type: " + response.getHeader("Content-Type"));
               }
             } else {
+              LOGGER.info("Retrieving trigger function failed with status code: " 
+                  + response.statusCode());
               promise.fail("Dereferencing the trigger function failed with status code: " 
                   + response.statusCode());
             }

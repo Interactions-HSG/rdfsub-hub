@@ -1,4 +1,4 @@
-package org.hyperagents.rdfsub;
+package org.hyperagents.rdfsub.ldscript;
 
 import fr.inria.corese.core.Graph;
 import fr.inria.corese.core.print.ResultFormat;
