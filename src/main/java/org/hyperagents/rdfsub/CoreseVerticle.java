@@ -16,6 +16,8 @@ import fr.inria.corese.kgram.core.Mappings;
 import fr.inria.corese.sparql.api.IDatatype;
 import fr.inria.corese.sparql.datatype.DatatypeMap;
 import fr.inria.corese.sparql.exceptions.EngineException;
+import fr.inria.corese.sparql.exceptions.SafetyException;
+import fr.inria.corese.sparql.exceptions.UndefinedExpressionException;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
@@ -166,7 +168,14 @@ public class CoreseVerticle extends AbstractVerticle {
                   } else {
                     promise.complete();
                   }
-                  
+                
+                } catch (SafetyException e) {
+                  LOGGER.info("The trigger raised a security exception: " + e.getMessage());
+                  promise.fail(e);
+                } catch (UndefinedExpressionException e) {
+                  LOGGER.info("The trigger calls a Linked Function that is either not defined or "
+                      + "not authorized: " + e.getMessage());
+                  promise.fail(e);
                 } catch (EngineException e) {
                   LOGGER.info(e.getMessage());
                   promise.fail(e);

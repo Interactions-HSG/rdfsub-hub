@@ -1,6 +1,7 @@
 package org.hyperagents.rdfsub.ldscript;
 
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -85,6 +86,7 @@ public class Sandbox {
     Access.set(Access.Feature.SPARQL_UPDATE, level);
     Access.set(Access.Feature.READ_WRITE, level);
     Access.set(Access.Feature.JAVA_FUNCTION, level);
+    Access.set(Access.Feature.LINKED_TRANSFORMATION, level);
   }
   
   /**
@@ -121,8 +123,9 @@ public class Sandbox {
    * @param del the triples deleted with this data update
    * @param ins the triples inserted with this data update
    * @return value returned by the triggering function
+   * @throws EngineException 
    */
-  public IDatatype invokeTrigger(IDatatype trigger, IDatatype del, IDatatype ins) {
+  public IDatatype invokeTrigger(IDatatype trigger, IDatatype del, IDatatype ins) throws EngineException {
     return invokeTrigger(trigger.getLabel(), del, ins);
   }
   
@@ -135,13 +138,13 @@ public class Sandbox {
    * @param ins the triples inserted with this data update
    * @return value returned by the triggering function
    */
-  public IDatatype invokeTrigger(String trigger, IDatatype del, IDatatype ins) {
+  public IDatatype invokeTrigger(String trigger, IDatatype del, IDatatype ins) throws EngineException {
     ExecutorService exec = Executors.newSingleThreadExecutor();
     
     Future<IDatatype> result = exec.submit(new Callable<IDatatype>() {
       
       @Override
-      public IDatatype call() throws Exception {
+      public IDatatype call() throws EngineException {
         return QueryProcess.create(graph).funcall(trigger, createTriggerContext(), del, ins);
       }
       
@@ -155,8 +158,13 @@ public class Sandbox {
       }
     } catch (TimeoutException e) {
       LOGGER.info("Execution timed out for trigger: " + trigger);
-    } catch (Exception e) {
-      LOGGER.info("An exception was raised by invoking the trigger: " + trigger);
+    } catch (ExecutionException | InterruptedException e) {
+      if (e.getCause() != null && e.getCause() instanceof EngineException) {
+        throw (EngineException) e.getCause();
+      } else {
+        LOGGER.info("There was a concurrency problem while calling the trigger: " + trigger + 
+            "; cause: " + e.getMessage());
+      }
     } finally {
       exec.shutdownNow();
     }
