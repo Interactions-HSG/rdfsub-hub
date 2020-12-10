@@ -92,6 +92,10 @@ public class CoreseVerticle extends AbstractVerticle {
         updateTriple("delete data", message.body());
         LOGGER.info("Triple deleted: " + message.body());
         break;
+      case "update-query":
+        updateQuery(message.body());
+        LOGGER.info("Update query: " + message.body());
+        break;
       default:
         break;
     }
@@ -99,11 +103,14 @@ public class CoreseVerticle extends AbstractVerticle {
   }
   
   private void updateTriple(String updateMethod, String quad) {
-    String query = "@event\n" + updateMethod + " {" + quad + "}";
-    
+    String query = updateMethod + " {" + quad + "}";
+    updateQuery(query);
+  }
+  
+  private void updateQuery(String query) {
     vertx.executeBlocking(promise -> {
       try {
-        QueryProcess.create(graph).sparqlUpdate(query);
+        QueryProcess.create(graph).sparqlUpdate("@event\n" + query);
         promise.complete();
       } catch (EngineException e) {
         promise.fail(e);

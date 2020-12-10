@@ -103,6 +103,16 @@ public class HttpAPIVerticle extends AbstractVerticle {
       }
     });
     
+    // TODO: validate request
+    router.post("/publish").consumes("application/sparql-update").handler((routingContext) -> {
+      String payload = routingContext.getBodyAsString();
+      
+      DeliveryOptions options = new DeliveryOptions().addHeader("method", "update-query");
+      vertx.eventBus().send("corese", payload, options);
+      
+      routingContext.response().setStatusCode(202).end();
+    });
+    
     return router;
   }
   
