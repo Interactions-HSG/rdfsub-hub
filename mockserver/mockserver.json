@@ -15,6 +15,19 @@
 	{
 		"httpRequest": {
 			"method": "GET",
+			"path": "/trigger-members"
+		},
+		"httpResponse": {
+			"statusCode": 200,
+			"headers": {
+				"Content-Type": [ "application/sparql-query" ]
+			},
+			"body": "@public\nfunction <http://localhost:1080/trigger-members>(del, ins) { xt:display(del); xt:display(ins); for ((s p o) in ins) { if (p = <http://w3id.org/eve#contains>) { return(true); }; }; return(false); }"
+		}
+	},
+	{
+		"httpRequest": {
+			"method": "GET",
 			"path": "/trigger-rec"
 		},
 		"httpResponse": {

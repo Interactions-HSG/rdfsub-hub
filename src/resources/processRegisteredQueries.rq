@@ -1,4 +1,3 @@
-@public
 @update
 function us:processRegisteredQueries(q, del, ins) {
   for (select ?callback ?query ?trigger from <##SUBSCRIBERS_GRAPH_IRI##> where { ?x a us:Subscription ; us:callback ?callback ; us:query ?query ; us:trigger ?trigger . }) {

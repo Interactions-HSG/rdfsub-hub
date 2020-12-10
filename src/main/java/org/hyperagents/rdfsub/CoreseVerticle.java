@@ -49,6 +49,8 @@ public class CoreseVerticle extends AbstractVerticle {
   private String registryGraphURI;
   private CapabilityURIGenerator generator;
   
+  private String updateFunction = "@update function us:processRegisteredQueries(q, del, ins) { true } ";
+  
   @Override
   public void start() throws LoadException {
     graph = Graph.create();
@@ -57,14 +59,11 @@ public class CoreseVerticle extends AbstractVerticle {
     
     String updateFunPath = config().getString("process-queries-function", 
         "src/resources/processRegisteredQueries.rq");
-    String updateFunction = vertx.fileSystem().readFileBlocking(updateFunPath).toString();
+    updateFunction = vertx.fileSystem().readFileBlocking(updateFunPath).toString();
     
     // The provided template does not contain the name of the graph of subscribers
     registryGraphURI = generator.generateCapabilityURI("/metadata/");
     updateFunction = updateFunction.replaceFirst("##SUBSCRIBERS_GRAPH_IRI##", registryGraphURI);
-    
-    Load.create(graph).loadString(SANDBOX_PREFIX_DEFINITION + DISPATCHER_PREFIX_DEFINITION 
-        + updateFunction, Load.QUERY_FORMAT);
     
     vertx.eventBus().consumer("corese", this::handleRequest);
   }
@@ -110,7 +109,12 @@ public class CoreseVerticle extends AbstractVerticle {
   private void updateQuery(String query) {
     vertx.executeBlocking(promise -> {
       try {
-        QueryProcess.create(graph).sparqlUpdate("@event\n" + query);
+        LOGGER.info("Performing query: " + query);
+        QueryProcess.create(graph).sparqlUpdate(SANDBOX_PREFIX_DEFINITION 
+            + DISPATCHER_PREFIX_DEFINITION
+            + "@event\n" + query + "\n\n" 
+            + updateFunction
+            );
         promise.complete();
       } catch (EngineException e) {
         promise.fail(e);
