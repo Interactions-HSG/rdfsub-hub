@@ -35,7 +35,8 @@ public class NotificationDispatcher {
    * @param result latest result to the registered query
    * @return true if the result is a variable mapping or a graph, false otherwise 
    */
-  public static IDatatype notifySubscriber(IDatatype callbackIri, IDatatype result) {
+  public static IDatatype notifySubscriber(IDatatype subscriptionIri, IDatatype callbackIri, 
+      IDatatype result) {
     String notification;
     
     // TODO: mappings data type constant?
@@ -49,14 +50,18 @@ public class NotificationDispatcher {
       return DatatypeMap.FALSE;
     }
     
-    sendHTTPNotification(callbackIri.stringValue(), result.getDatatypeURI(), notification);
+    sendHTTPNotification(subscriptionIri.stringValue(), callbackIri.stringValue(), 
+        result.getDatatypeURI(), notification);
     
     return DatatypeMap.TRUE;
   }
   
-  private static void sendHTTPNotification(String callbackIri, String datatype, String payload) {
+  public static void sendHTTPNotification(String subscriptionIri, String callbackIri, 
+      String datatype, String payload) {
     WebClient webClient = WebClient.create(Vertx.currentContext().owner());
     HttpRequest<Buffer> request = webClient.postAbs(callbackIri);
+    
+    request.putHeader("Link", "<" + subscriptionIri + ">; rel=\"self\"");
     
     if (datatype.equals(IDatatype.GRAPH_DATATYPE)) {
       request.putHeader("Content-Type", "text/turtle");
