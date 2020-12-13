@@ -1,5 +1,9 @@
 package org.hyperagents.rdfsub.api;
 
+import java.util.ArrayList;
+
+import org.hyperagents.rdfsub.CapabilityURIGenerator;
+
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.MultiMap;
 import io.vertx.core.eventbus.DeliveryOptions;
@@ -56,10 +60,15 @@ public class HttpAPIVerticle extends AbstractVerticle {
       String payload = routingContext.getBodyAsString();
       // TODO: validate subscribe payload syntax
       
+      // TODO: refactor after MASTech demo
+      String subscriptionIRI = new CapabilityURIGenerator(config())
+          .generateUniqueCapabilityURI("/subscriptions/", new ArrayList<String>());
+      payload = payload.replaceAll("<>", "<" + subscriptionIRI + ">");
+      
       DeliveryOptions options = new DeliveryOptions().addHeader("method", "subscribe");
       vertx.eventBus().send("corese", payload, options);
       
-      routingContext.response().setStatusCode(202).end();
+      routingContext.response().setStatusCode(202).putHeader("Location", subscriptionIRI).end();
     });
     
     router.post("/topics").consumes("text/turtle").handler((routingContext) -> {
